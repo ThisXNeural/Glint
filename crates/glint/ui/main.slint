@@ -8,7 +8,17 @@ export struct CustomShortcut {
     admin: bool,
     // Why the shortcut doesn't work, e.g. taken by another app.
     error: string,
+    // Set when an app was picked from the list instead of typing a command.
+    app-name: string,
+    app-icon: image,
 }
+
+// One entry of the app picker.
+export struct AppChoice {
+    name: string,
+    icon: image,
+}
+
 
 export struct ResultItem {
     // A section title ("Apps", "Files") rather than a result.
@@ -448,6 +458,79 @@ component SettingRow inherits Rectangle {
     }
 }
 
+// Searchable list of installed apps, styled like a Windows 11 flyout.
+component AppPicker inherits PopupWindow {
+    in property <[AppChoice]> apps;
+    callback filter(string);
+    callback picked(int);
+    close-policy: close-on-click-outside;
+    width: 400px;
+    height: 440px;
+
+    Rectangle {
+        border-radius: 8px;
+        background: Theme.dark ? #2c2c2c : #f9f9f9;
+        border-width: 1px;
+        border-color: Theme.stroke;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000060;
+        drop-shadow-offset-y: 8px;
+        clip: true;
+        VerticalLayout {
+            padding: 10px;
+            spacing: 8px;
+            filter-box := LineEdit {
+                placeholder-text: "Search apps";
+                init => { self.focus(); }
+                edited(t) => { root.filter(t); }
+            }
+            if root.apps.length == 0: Text {
+                text: "No apps found";
+                color: Theme.text-secondary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                vertical-stretch: 1;
+            }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    for app[k] in root.apps: Rectangle {
+                        height: 40px;
+                        border-radius: 5px;
+                        background: ta.has-hover ? Theme.hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 12px;
+                            Image {
+                                width: 24px;
+                                height: 24px;
+                                y: (parent.height - self.height) / 2;
+                                source: app.icon;
+                                image-rendering: smooth;
+                            }
+                            Text {
+                                text: app.name;
+                                font-size: 14px;
+                                color: Theme.text;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                        }
+                        ta := TouchArea {
+                            clicked => {
+                                root.picked(k);
+                                root.close();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component SettingsWindow inherits Window {
     in-out property <string> hotkey;
     in-out property <bool> recording: false;
@@ -461,6 +544,9 @@ export component SettingsWindow inherits Window {
     in-out property <[CustomShortcut]> shortcuts;
     // Which custom shortcut is waiting for keys, or -1.
     in-out property <int> recording-shortcut: -1;
+    // Apps for the picker, already filtered; and the shortcut it fills in.
+    in property <[AppChoice]> app-choices;
+    in-out property <int> picking-for: -1;
     in property <string> index-status;
     in property <string> version;
 
@@ -476,6 +562,8 @@ export component SettingsWindow inherits Window {
     callback shortcut-hotkey-chosen(int, string);
     callback shortcut-edited(int, string, bool);   // index, command, as administrator
     callback add-shortcut();
+    callback filter-apps(string);
+    callback app-picked(int, int);   // shortcut index, index into app-choices
     callback remove-shortcut(int);
 
     title: "Glint settings";
@@ -483,6 +571,14 @@ export component SettingsWindow inherits Window {
     height: 720px;
     background: Theme.dark ? #202020 : #f3f3f3;
     default-font-family: Theme.font;
+
+    picker := AppPicker {
+        x: (root.width - self.width) / 2;
+        y: 120px;
+        apps: root.app-choices;
+        filter(t) => { root.filter-apps(t); }
+        picked(k) => { root.app-picked(root.picking-for, k); }
+    }
 
     keys := FocusScope {
         capture-key-pressed(e) => {
@@ -625,11 +721,54 @@ export component SettingsWindow inherits Window {
                                 keys.focus();
                             }
                         }
-                        LineEdit {
+                        if sc.app-name == "": LineEdit {
                             text: sc.command;
-                            placeholder-text: "Command, e.g. wt.exe or notepad";
+                            placeholder-text: "Command, or pick an app";
                             horizontal-stretch: 1;
                             edited(t) => { root.shortcut-edited(i, t, sc.admin); }
+                        }
+                        // The picked app, as a chip; the cross goes back to a command.
+                        if sc.app-name != "": Rectangle {
+                            horizontal-stretch: 1;
+                            height: 32px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: 4px;
+                            background: Theme.dark ? #ffffff0f : #0000000a;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 2px;
+                                spacing: 8px;
+                                Image {
+                                    width: 20px;
+                                    height: 20px;
+                                    y: (parent.height - self.height) / 2;
+                                    source: sc.app-icon;
+                                    image-rendering: smooth;
+                                }
+                                Text {
+                                    text: sc.app-name;
+                                    font-size: 13px;
+                                    color: Theme.text;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                IconButton {
+                                    width: 28px;
+                                    height: 28px;
+                                    y: (parent.height - self.height) / 2;
+                                    glyph: Glyphs.close;
+                                    clicked => { root.shortcut-edited(i, "", sc.admin); }
+                                }
+                            }
+                        }
+                        Button {
+                            text: "Apps ▾";
+                            clicked => {
+                                root.picking-for = i;
+                                root.filter-apps("");
+                                picker.show();
+                            }
                         }
                         CheckBox {
                             text: "Admin";

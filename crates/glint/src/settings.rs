@@ -10,24 +10,35 @@ pub struct Shortcut {
     pub hotkey: String,
     pub command: String,
     pub admin: bool,
+    /// Name of the app picked from the list, shown instead of the command.
+    pub app: String,
 }
 
 impl Shortcut {
-    /// `Ctrl+Alt+T | wt.exe | admin`
+    /// `Ctrl+Alt+T | wt.exe | admin`, or with a picked app
+    /// `Ctrl+Alt+C | "shell:AppsFolder\Chrome" | | Google Chrome`.
     fn parse(v: &str) -> Option<Self> {
-        let mut parts = v.splitn(3, '|').map(str::trim);
+        let mut parts = v.splitn(4, '|').map(str::trim);
         let hotkey = parts.next()?.to_string();
         let command = parts.next()?.to_string();
         let admin = parts.next().is_some_and(|a| a.eq_ignore_ascii_case("admin"));
-        (!command.is_empty()).then_some(Self { hotkey, command, admin })
+        let app = parts.next().unwrap_or_default().to_string();
+        (!command.is_empty()).then_some(Self { hotkey, command, admin, app })
     }
 
     fn line(&self) -> String {
-        format!("shortcut={} | {}{}\n", self.hotkey, self.command, if self.admin { " | admin" } else { "" })
+        let mut line = format!("shortcut={} | {}", self.hotkey, self.command);
+        if self.admin || !self.app.is_empty() {
+            line += if self.admin { " | admin" } else { " |" };
+        }
+        if !self.app.is_empty() {
+            line += &format!(" | {}", self.app);
+        }
+        line + "\n"
     }
 
     pub fn terminal_as_admin() -> Self {
-        Self { hotkey: "Ctrl+Alt+T".into(), command: "wt.exe".into(), admin: true }
+        Self { hotkey: "Ctrl+Alt+T".into(), command: "wt.exe".into(), admin: true, app: String::new() }
     }
 }
 
@@ -173,8 +184,10 @@ mod tests {
         let line = s.line();
         assert_eq!(line, "shortcut=Ctrl+Alt+T | wt.exe | admin\n");
         assert_eq!(Shortcut::parse(line.trim_end().strip_prefix("shortcut=").unwrap()), Some(s));
-        let p = Shortcut::parse("Win+N | notepad C:\\a|b.txt").unwrap();
-        assert_eq!((p.command.as_str(), p.admin), ("notepad C:\\a", false));
+        let chrome = Shortcut { hotkey: "Ctrl+Alt+C".into(), command: "\"C:\\x\\Chrome.lnk\"".into(), admin: false, app: "Google Chrome".into() };
+        let line = chrome.line();
+        assert_eq!(line, "shortcut=Ctrl+Alt+C | \"C:\\x\\Chrome.lnk\" | | Google Chrome\n");
+        assert_eq!(Shortcut::parse(line.trim_end().strip_prefix("shortcut=").unwrap()), Some(chrome));
         assert_eq!(Shortcut::parse(""), None);
     }
 }

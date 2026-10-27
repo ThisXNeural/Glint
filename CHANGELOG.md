@@ -9,8 +9,8 @@ All notable changes are listed here. The format follows
 ### Added
 - Run commands from search: type `>` and a command, like the Run dialog.
   <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> runs it (or an app) as administrator.
-- Custom shortcuts in Settings: any key combination runs a command from anywhere,
-  optionally as administrator.
+- Custom shortcuts in Settings: any key combination opens an app (picked from a
+  searchable list with icons) or runs a command from anywhere, optionally as administrator.
 - Default shortcut <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> opens Windows Terminal as
   administrator (PowerShell when Windows Terminal isn't installed).
 

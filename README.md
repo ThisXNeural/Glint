@@ -28,7 +28,7 @@ Glint یک جستجوگر سبک و بسیار سریع برای ویندوز ا
 - **دسته‌بندی‌ها:** همه، برنامه‌ها، پوشه‌ها و فایل‌ها. با <kbd>Tab</kbd> بینشان جابه‌جا شوید.
 - **رتبه‌بندی هوشمند:** نتایجی که با متن شما شروع می‌شوند اول می‌آیند و بخش منطبق پررنگ می‌شود.
 - **اجرای دستور:** با تایپ `>` در ابتدای متن، هر دستوری مثل پنجرهٔ Run اجرا می‌شود (مثلاً `>cmd` یا `>ms-settings:`).
-- **میانبرهای دلخواه:** هر کلید ترکیبی را به یک دستور وصل کنید، با امکان اجرا به‌صورت ادمین. پیش‌فرض: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> ترمینال را به‌صورت ادمین باز می‌کند.
+- **میانبرهای دلخواه:** هر کلید ترکیبی را به یک برنامه (از فهرست برنامه‌ها) یا یک دستور وصل کنید، با امکان اجرا به‌صورت ادمین. پیش‌فرض: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> ترمینال را به‌صورت ادمین باز می‌کند.
 - **جستجوی فارسی:** «ی/ي» و «ک/ك»، نیم‌فاصله و اعداد فارسی درست تطبیق داده می‌شوند.
 - **ظاهر ویندوز ۱۱:** فونت Segoe UI Variable، افکت Acrylic، و پیروی از حالت روشن/تیره و رنگ اصلی سیستم.
 - **مصرف بسیار کم:** نوشته‌شده با Rust، بدون مرورگر داخلی و بدون .NET. در حالت بیکار تقریباً صفر درصد CPU مصرف می‌کند.
@@ -100,7 +100,7 @@ Glint is a lightweight, very fast search tool for Windows. It sleeps in the back
 - **Categories:** All, Apps, Folders and Files. <kbd>Tab</kbd> switches between them.
 - **Smart ranking:** names that start with what you type come first, and the matched part is highlighted.
 - **Run commands:** start with `>` to run anything the Run dialog can (`>cmd`, `>ms-settings:`, `>ipconfig /all`).
-- **Custom shortcuts:** bind any key combination to a command, optionally as administrator. Default: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> opens Terminal as administrator.
+- **Custom shortcuts:** bind any key combination to an app (picked from a searchable list) or a command, optionally as administrator. Default: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> opens Terminal as administrator.
 - **Persian-aware:** ی/ي, ک/ك, the half-space and Persian digits all match.
 - **Windows 11 look:** Segoe UI Variable, acrylic backdrop, follows the system light/dark theme and accent color.
 - **Tiny footprint:** native Rust, no embedded browser, no .NET runtime. Near-zero CPU while idle.

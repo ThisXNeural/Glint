@@ -24,6 +24,11 @@ impl AppIndex {
         Self { apps }
     }
 
+    /// Every app, sorted by name.
+    pub fn all(&self) -> &[App] {
+        &self.apps
+    }
+
     pub fn len(&self) -> usize {
         self.apps.len()
     }

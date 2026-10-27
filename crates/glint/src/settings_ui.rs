@@ -1,7 +1,7 @@
 //! The settings window: edits [`Settings`] and applies each change at once.
 
 use crate::settings::Shortcut;
-use crate::{current_settings, CustomShortcut, Shared, SettingsWindow, Theme, SETTINGS, SETTINGS_WINDOW};
+use crate::{current_settings, AppChoice, CustomShortcut, Shared, SettingsWindow, Theme, SETTINGS, SETTINGS_WINDOW};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -95,7 +95,53 @@ fn apply_theme(w: &SettingsWindow) {
     w.invoke_sync_theme();
 }
 
-fn create(_shared: Arc<Shared>) -> SettingsWindow {
+thread_local! {
+    /// Apps behind the picker's current list: (name, launch target).
+    static PICKER_APPS: std::cell::RefCell<Vec<(String, String)>> = Default::default();
+    /// Icons already drawn for the picker and chips, by launch target.
+    static ICONS: std::cell::RefCell<std::collections::HashMap<String, slint::Image>> = Default::default();
+}
+
+fn app_icon(name: &str, target: &str) -> slint::Image {
+    ICONS.with(|cache| {
+        cache
+            .borrow_mut()
+            .entry(target.to_string())
+            .or_insert_with(|| {
+                let row = crate::engine::Row {
+                    title: name.to_string(),
+                    subtitle: String::new(),
+                    target: target.to_string(),
+                    kind: crate::engine::RowKind::App,
+                    matched: None,
+                };
+                crate::icon_fast(&row).map(|i| crate::to_image(&i)).unwrap_or_default()
+            })
+            .clone()
+    })
+}
+
+/// The launch target of a picked app, quoted so paths with spaces survive.
+fn app_command(target: &str) -> String {
+    format!("\"{target}\"")
+}
+
+/// Fills the picker with the apps matching `filter` (all when empty).
+fn filter_apps(w: &SettingsWindow, shared: &Shared, filter: &str) {
+    let apps = shared.engine.apps.read().unwrap();
+    let list: Vec<(String, String)> = if filter.trim().is_empty() {
+        apps.all().iter().map(|a| (a.name.clone(), a.target.clone())).collect()
+    } else {
+        apps.search(filter, 200).into_iter().map(|a| (a.name.clone(), a.target.clone())).collect()
+    };
+    drop(apps);
+    let rows: Vec<AppChoice> =
+        list.iter().map(|(name, target)| AppChoice { name: name.as_str().into(), icon: app_icon(name, target) }).collect();
+    PICKER_APPS.with(|p| *p.borrow_mut() = list);
+    w.set_app_choices(ModelRc::from(Rc::new(VecModel::from(rows))));
+}
+
+fn create(shared: Arc<Shared>) -> SettingsWindow {
     let w = SettingsWindow::new().expect("create settings window");
     w.on_describe_hotkey(|text, ctrl, alt, shift, win| describe_hotkey(&text, ctrl, alt, shift, win).into());
 
@@ -130,15 +176,36 @@ fn create(_shared: Arc<Shared>) -> SettingsWindow {
         let Some(w) = weak.upgrade() else { return };
         edit_shortcuts(&w, |list| {
             if let Some(s) = list.get_mut(i as usize) {
-                s.command = command.trim().to_string();
+                let command = command.trim().to_string();
+                if command != s.command {
+                    s.app.clear();
+                }
+                s.command = command;
                 s.admin = admin;
+            }
+        });
+    });
+    let weak = w.as_weak();
+    let sh = shared.clone();
+    w.on_filter_apps(move |filter| {
+        let Some(w) = weak.upgrade() else { return };
+        filter_apps(&w, &sh, &filter);
+    });
+    let weak = w.as_weak();
+    w.on_app_picked(move |i, k| {
+        let Some(w) = weak.upgrade() else { return };
+        let Some((name, target)) = PICKER_APPS.with(|p| p.borrow().get(k as usize).cloned()) else { return };
+        edit_shortcuts(&w, |list| {
+            if let Some(s) = list.get_mut(i as usize) {
+                s.command = app_command(&target);
+                s.app = name;
             }
         });
     });
     let weak = w.as_weak();
     w.on_add_shortcut(move || {
         let Some(w) = weak.upgrade() else { return };
-        edit_shortcuts(&w, |list| list.push(Shortcut { hotkey: String::new(), command: String::new(), admin: false }));
+        edit_shortcuts(&w, |list| list.push(Shortcut { hotkey: String::new(), command: String::new(), admin: false, app: String::new() }));
     });
     let weak = w.as_weak();
     w.on_remove_shortcut(move |i| {
@@ -191,7 +258,7 @@ fn edit_shortcuts(w: &SettingsWindow, f: impl FnOnce(&mut Vec<Shortcut>)) {
     let ok = apply_shortcuts(&list);
     // Typing in a command box only needs saving; rebuilding the rows would
     // take the focus away from the box being typed in.
-    if list.len() != before.len() || list.iter().zip(&before).any(|(a, b)| a.hotkey != b.hotkey) {
+    if list.len() != before.len() || list.iter().zip(&before).any(|(a, b)| a.hotkey != b.hotkey || a.app != b.app) {
         show_shortcuts(w, &list, &ok);
     } else {
         let model = w.get_shortcuts();
@@ -224,6 +291,12 @@ fn show_shortcuts(w: &SettingsWindow, list: &[Shortcut], ok: &[bool]) {
             command: s.command.as_str().into(),
             admin: s.admin,
             error: error_text(s, ok.get(i).copied().unwrap_or(true)),
+            app_name: s.app.as_str().into(),
+            app_icon: if s.app.is_empty() {
+                slint::Image::default()
+            } else {
+                app_icon(&s.app, s.command.trim_matches('"'))
+            },
         })
         .collect();
     w.set_shortcuts(ModelRc::from(Rc::new(VecModel::from(rows))));
