@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-10-27
+
+### Changed
+- Glint.exe, GlintSetup.exe and the uninstaller are digitally signed
+  (self-signed "Glint" certificate for now; Windows still shows SmartScreen
+  until a certificate from a trusted authority is used).
+
 ## [0.3.0] - 2026-10-27
 
 ### Changed
@@ -26,4 +33,5 @@ All notable changes are listed here. The format follows
 
 - First version: NTFS index, desktop typing trigger, global shortcut, acrylic window, settings.
 
+[0.3.1]: https://github.com/ThisXNeural/Glint/releases/tag/v0.3.1
 [0.3.0]: https://github.com/ThisXNeural/Glint/releases/tag/v0.3.0

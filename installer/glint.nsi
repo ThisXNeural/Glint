@@ -23,6 +23,12 @@ RequestExecutionLevel user
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Glint"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 
+; Signs the uninstaller and the finished setup when build.sh has a certificate.
+!ifdef SIGN
+  !uninstfinalize '"${SIGN}" "%1"'
+  !finalize '"${SIGN}" "%1"'
+!endif
+
 Name "${APP}"
 OutFile "GlintSetup.exe"
 BrandingText "${APP} ${VERSION}"
