@@ -1,10 +1,6 @@
 <div align="center">
 
-<img src="docs/images/logo.svg" width="96" alt="Glint logo">
-
-# Glint
-
-**جستجوی فوری برای ویندوز ۱۰ و ۱۱ · Instant search for Windows 10 & 11**
+<img src="docs/images/banner.jpg" alt="Glint: instant search for Windows 10 &amp; 11">
 
 [![CI](https://github.com/ThisXNeural/Glint/actions/workflows/ci.yml/badge.svg)](https://github.com/ThisXNeural/Glint/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/ThisXNeural/Glint?include_prereleases&label=release)](https://github.com/ThisXNeural/Glint/releases)
@@ -14,15 +10,9 @@
 
 **[فارسی](#فارسی)** · **[English](#english)**
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
-  <img src="docs/images/hero-light.png" width="820" alt="Glint search window">
-</picture>
-
 </div>
 
 ---
-
 
 <div dir="rtl">
 
