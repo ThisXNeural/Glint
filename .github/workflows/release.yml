@@ -62,7 +62,7 @@ jobs:
             installer/out/Glint.exe
             installer/out/SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: "!startsWith(github.ref, 'refs/tags/') && inputs.tag == ''"
         with:
           name: glint-windows-x64
