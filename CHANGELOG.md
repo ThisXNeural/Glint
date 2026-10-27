@@ -8,7 +8,7 @@ All notable changes are listed here. The format follows
 
 ### Changed
 - Glint.exe, GlintSetup.exe and the uninstaller are digitally signed
-  (self-signed "Glint" certificate for now; Windows still shows SmartScreen
+  (self-signed "Glint" certificate until a trusted one is added to the repository secrets; Windows still shows SmartScreen
   until a certificate from a trusted authority is used).
 
 ## [0.3.0] - 2026-10-27

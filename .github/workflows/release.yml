@@ -29,25 +29,39 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Load signing certificate
+      # Signs with the certificate in the repository secrets when present.
+      # Otherwise a self-signed "Glint" certificate is made for this run, so
+      # every release is signed; only a trusted certificate clears SmartScreen.
+      - name: Prepare signing certificate
         env:
           CERT: ${{ secrets.SIGNING_CERT_PFX_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: |
+          PFX="$RUNNER_TEMP/cert.pfx"
           if [ -n "$CERT" ]; then
-            echo "$CERT" | base64 -d > "$RUNNER_TEMP/cert.pfx"
-            echo "SIGN_PFX=$RUNNER_TEMP/cert.pfx" >> "$GITHUB_ENV"
+            echo "$CERT" | base64 -d > "$PFX"
+            PASS="$CERT_PASSWORD"
           else
-            echo "::warning::SIGNING_CERT_PFX_BASE64 is not set, so this release is unsigned."
+            echo "::warning::SIGNING_CERT_PFX_BASE64 is not set; signing with a self-signed certificate."
+            PASS=$(openssl rand -hex 16)
+            openssl req -x509 -newkey rsa:3072 -sha256 -days 1095 -nodes \
+              -keyout "$RUNNER_TEMP/key.pem" -out "$RUNNER_TEMP/cert.pem" \
+              -subj "/CN=Glint/O=Glint" \
+              -addext "extendedKeyUsage=codeSigning" -addext "keyUsage=digitalSignature"
+            openssl pkcs12 -export -inkey "$RUNNER_TEMP/key.pem" -in "$RUNNER_TEMP/cert.pem" \
+              -out "$PFX" -passout "pass:$PASS" -name Glint
+            rm -f "$RUNNER_TEMP/key.pem"
           fi
+          echo "::add-mask::$PASS"
+          echo "SIGN_PFX=$PFX" >> "$GITHUB_ENV"
+          echo "SIGN_PASSWORD=$PASS" >> "$GITHUB_ENV"
 
       - name: Build
-        env:
-          SIGN_PASSWORD: ${{ secrets.SIGNING_CERT_PASSWORD }}
         run: bash installer/build.sh
 
       - name: Remove certificate
         if: always()
-        run: rm -f "$RUNNER_TEMP/cert.pfx"
+        run: rm -f "$RUNNER_TEMP/cert.pfx" "$RUNNER_TEMP/cert.pem"
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
@@ -56,6 +70,7 @@ jobs:
           tag_name: ${{ inputs.tag || github.ref_name }}
           target_commitish: ${{ github.sha }}
           name: Glint ${{ inputs.tag || github.ref_name }}
+          body_path: .github/release-notes.md
           generate_release_notes: true
           files: |
             installer/out/GlintSetup.exe

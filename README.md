@@ -169,7 +169,7 @@ On Linux, `cargo run -p glint` opens the window with demo data, which is handy f
 
 ### Code signing
 
-Releases are built by GitHub Actions when a `v*` tag is pushed. If the repository has the secrets `SIGNING_CERT_PFX_BASE64` (the `.pfx` file, base64) and `SIGNING_CERT_PASSWORD`, both executables are signed and timestamped. Without them the release is published unsigned. See [CONTRIBUTING.md](CONTRIBUTING.md#releases-and-signing).
+Releases are built by GitHub Actions when a `v*` tag is pushed. If the repository has the secrets `SIGNING_CERT_PFX_BASE64` (the `.pfx` file, base64) and `SIGNING_CERT_PASSWORD`, both executables are signed with it and timestamped. Without them, each release is signed with a self-signed "Glint" certificate. See [CONTRIBUTING.md](CONTRIBUTING.md#releases-and-signing).
 
 ### License
 

@@ -42,6 +42,9 @@ To enable signing, add two repository secrets
 | `SIGNING_CERT_PFX_BASE64` | The code-signing certificate (`.pfx`), base64-encoded: `base64 -w0 cert.pfx` |
 | `SIGNING_CERT_PASSWORD` | The password of that `.pfx` |
 
+Without these secrets, the release workflow makes a self-signed "Glint"
+certificate for each run, so releases are always signed.
+
 A self-signed certificate does not remove the Windows SmartScreen warning;
 only a certificate from a trusted authority does. Free options for open source
 projects include [SignPath Foundation](https://signpath.org/).
