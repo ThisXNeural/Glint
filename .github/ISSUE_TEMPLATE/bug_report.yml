@@ -1,0 +1,40 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Install mode
+      options:
+        - Just for me
+        - Full disk search (administrator)
+        - Portable Glint.exe
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Glint version
+      description: Shown at the bottom of Settings.
+      placeholder: "0.3.0"
+  - type: textarea
+    id: log
+    attributes:
+      label: Crash log
+      description: If Glint crashed, paste %APPDATA%\Glint\crash.log here.
+      render: text

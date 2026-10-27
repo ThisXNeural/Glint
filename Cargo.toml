@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/glint-core", "crates/glint"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Slint's winit backend divides by the monitor refresh rate, which some
+# displays (remote desktop, virtual adapters) report as 0. Local fix until upstream.
+[patch.crates-io]
+i-slint-backend-winit = { path = "vendor/i-slint-backend-winit" }

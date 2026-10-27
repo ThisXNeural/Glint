@@ -1,0 +1,593 @@
+// Search window styled after the Windows 11 Start menu search.
+import { ScrollView, Switch, ComboBox, Button, Palette } from "std-widgets.slint";
+
+export struct ResultItem {
+    // A section title ("Apps", "Files") rather than a result.
+    is-header: bool,
+    // The title split around the part that matched the query.
+    title-before: string,
+    title-match: string,
+    title-after: string,
+    subtitle: string,
+    // Short kind label on the right: "App", "Folder", "PDF".
+    tag: string,
+    icon: image,
+    // Top of the row inside the list, for keeping the selection in view.
+    y: length,
+    height: length,
+}
+
+export global Theme {
+    in-out property <bool> dark: true;
+    in-out property <color> accent: #0067c0;
+    in-out property <string> font: "Segoe UI Variable Text";
+
+    // True while Windows draws its acrylic material behind the window.
+    in-out property <bool> translucent: false;
+    // What fills the window when translucent; only previews change it.
+    in-out property <color> backdrop: transparent;
+
+    out property <color> background: translucent ? transparent : (dark ? #202020 : #f3f3f3);
+    out property <color> card: translucent ? (dark ? #ffffff0f : #ffffffb3) : (dark ? #2b2b2b : #fbfbfb);
+    out property <color> stroke: dark ? #ffffff14 : #0000000f;
+    out property <color> divider: dark ? #ffffff10 : #0000000d;
+    out property <color> text: dark ? #ffffff : #1a1a1a;
+    out property <color> text-secondary: dark ? #ffffffc8 : #00000099;
+    out property <color> text-tertiary: dark ? #ffffff8b : #00000072;
+    out property <color> hover: dark ? #ffffff0f : #0000000a;
+    out property <color> selected: dark ? #ffffff15 : #0000000f;
+    out property <color> on-accent: dark ? #000000 : #ffffff;
+    out property <color> keycap: dark ? #ffffff12 : #0000000a;
+}
+
+// 16x16 line icons, drawn as paths so they need no icon font.
+export global Glyphs {
+    out property <string> search: "M 6.5 1.5 A 5 5 0 1 1 6.49 1.5 Z M 10.2 10.2 L 14.5 14.5";
+    out property <string> all: "M 2 2 L 7 2 L 7 7 L 2 7 Z M 9 2 L 14 2 L 14 7 L 9 7 Z M 2 9 L 7 9 L 7 14 L 2 14 Z M 9 9 L 14 9 L 14 14 L 9 14 Z";
+    out property <string> apps: "M 3 1.5 L 13 1.5 A 1.5 1.5 0 0 1 14.5 3 L 14.5 13 A 1.5 1.5 0 0 1 13 14.5 L 3 14.5 A 1.5 1.5 0 0 1 1.5 13 L 1.5 3 A 1.5 1.5 0 0 1 3 1.5 Z M 1.5 5 L 14.5 5";
+    out property <string> folder: "M 1.5 3.5 L 6 3.5 L 7.5 5 L 14.5 5 L 14.5 13.5 L 1.5 13.5 Z";
+    out property <string> file: "M 3.5 1.5 L 9.5 1.5 L 12.5 4.5 L 12.5 14.5 L 3.5 14.5 Z M 9.5 1.5 L 9.5 4.5 L 12.5 4.5";
+    out property <string> gear: "M 6.8 1 L 9.2 1 L 9.6 2.9 L 11.1 3.5 L 12.7 2.4 L 14.4 4.1 L 13.3 5.7 L 13.9 7.2 L 15.8 7.6 L 15.8 10 L 13.9 10.4 L 13.3 11.9 L 14.4 13.5 L 12.7 15.2 L 11.1 14.1 L 9.6 14.7 L 9.2 16.6 L 6.8 16.6 L 6.4 14.7 L 4.9 14.1 L 3.3 15.2 L 1.6 13.5 L 2.7 11.9 L 2.1 10.4 L 0.2 10 L 0.2 7.6 L 2.1 7.2 L 2.7 5.7 L 1.6 4.1 L 3.3 2.4 L 4.9 3.5 L 6.4 2.9 Z M 8 6.3 A 2.5 2.5 0 1 0 8.01 6.3 Z";
+}
+
+component Glyph inherits Path {
+    in property <string> d;
+    in property <color> tint: Theme.text-secondary;
+    width: 16px;
+    height: 16px;
+    viewbox-width: 16;
+    viewbox-height: 16;
+    commands: d;
+    stroke: tint;
+    stroke-width: 1.2px;
+    fill: transparent;
+}
+
+// Segmented tab like the Windows 11 search flyout: icon + label, underline when active.
+component CategoryTab inherits Rectangle {
+    in property <string> label;
+    in property <string> glyph;
+    in property <bool> active;
+    callback clicked;
+
+    height: 34px;
+    width: row.preferred-width + 24px;
+    border-radius: 6px;
+    background: ta.has-hover && !active ? Theme.hover : transparent;
+
+    row := HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 7px;
+        alignment: center;
+        Glyph {
+            d: root.glyph;
+            y: (parent.height - self.height) / 2;
+            tint: root.active ? Theme.accent : Theme.text-secondary;
+        }
+        Text {
+            text: root.label;
+            font-size: 13px;
+            font-weight: root.active ? 600 : 400;
+            color: root.active ? Theme.text : Theme.text-secondary;
+            vertical-alignment: center;
+        }
+    }
+    // Accent underline, as on Windows 11 pivots.
+    Rectangle {
+        y: parent.height - 3px;
+        x: (parent.width - self.width) / 2;
+        width: root.active ? 16px : 0;
+        height: 3px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        animate width { duration: 150ms; easing: ease-out; }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+component SectionHeader inherits Rectangle {
+    in property <string> label;
+    height: 30px;
+    Text {
+        x: 12px;
+        y: parent.height - self.height - 4px;
+        text: root.label;
+        font-size: 12px;
+        font-weight: 600;
+        color: Theme.text-secondary;
+    }
+}
+
+component ResultRow inherits Rectangle {
+    in property <ResultItem> item;
+    in property <bool> current;
+    callback activated;
+    callback hovered;
+
+    height: 48px;
+    border-radius: 6px;
+    background: current ? Theme.selected : (ta.has-hover ? Theme.hover : transparent);
+
+    // Accent bar on the selected row, like Windows 11 lists.
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: current ? 16px : 0;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        animate height { duration: 120ms; easing: ease-out; }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        spacing: 12px;
+        Image {
+            width: 28px;
+            height: 28px;
+            y: (parent.height - self.height) / 2;
+            source: item.icon;
+            image-rendering: smooth;
+        }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 1px;
+            // Title with the matched part in bold.
+            HorizontalLayout {
+                alignment: start;
+                if item.title-before != "": Text {
+                    text: item.title-before;
+                    font-size: 14px;
+                    color: Theme.text-secondary;
+                }
+                if item.title-match != "": Text {
+                    text: item.title-match;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: Theme.text;
+                }
+                Text {
+                    text: item.title-after;
+                    font-size: 14px;
+                    color: item.title-match != "" ? Theme.text-secondary : Theme.text;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+            }
+            if item.subtitle != "": Text {
+                text: item.subtitle;
+                font-size: 12px;
+                color: Theme.text-tertiary;
+                overflow: elide;
+            }
+        }
+        // Kind on the right; becomes an "Open" hint on the selected row.
+        if !current: Text {
+            text: item.tag;
+            font-size: 12px;
+            color: Theme.text-tertiary;
+            vertical-alignment: center;
+        }
+        if current: Rectangle {
+            width: hint.preferred-width + 14px;
+            height: 22px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 4px;
+            background: Theme.keycap;
+            hint := Text {
+                text: "Open";
+                font-size: 11px;
+                color: Theme.text-secondary;
+            }
+        }
+    }
+    ta := TouchArea {
+        clicked => { root.activated(); }
+        moved => { root.hovered(); }
+    }
+}
+
+component IconButton inherits Rectangle {
+    in property <string> glyph;
+    callback clicked;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: ta.has-hover ? Theme.hover : transparent;
+    Glyph { d: root.glyph; }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component SearchWindow inherits Window {
+    in-out property <string> query;
+    in-out property <int> category: 1; // 0 all, 1 apps, 2 folders, 3 files
+    in-out property <int> current: 0;
+    in property <[ResultItem]> results;
+    // Shown in the empty window, e.g. when the shortcut is taken.
+    in property <string> notice;
+    // Choices from settings: 0 Ctrl, 1 Shift, 2 Alt + Enter opens the location;
+    // 0 Tab, 1 Ctrl+Tab, 2 Ctrl+Right switches the category.
+    in property <int> open-location-key: 0;
+    in property <int> category-key: 0;
+    in property <string> placeholder: "Search apps, folders and files";
+    in property <string> no-results: "No results";
+
+    callback query-changed(string);
+    callback category-changed(int);
+    callback activate(int, bool);   // index, open containing folder
+    callback dismiss();
+    callback open-settings();
+    // Next selectable row from `current` going `delta` steps, skipping headers.
+    pure callback step(int, int) -> int;
+
+    title: "Glint";
+    no-frame: true;
+    always-on-top: true;
+    width: 680px;
+    height: 540px;
+    background: Theme.translucent ? Theme.backdrop : Theme.background;
+    default-font-family: Theme.font;
+
+    public function focus-input() {
+        input.focus();
+    }
+
+    // Replaces the query and puts the caret after the last character.
+    public function set-query(text: string) {
+        root.query = text;
+        input.set-selection-offsets(100000, 100000);
+    }
+
+    function move(delta: int) {
+        if (results.length == 0) { return; }
+        root.current = root.step(root.current, delta);
+        // Keep the selected row inside the visible area.
+        if (results[root.current].y < -list.content-y) {
+            list.content-y = -results[root.current].y;
+        } else if (results[root.current].y + results[root.current].height > -list.content-y + list.visible-height) {
+            list.content-y = -(results[root.current].y + results[root.current].height - list.visible-height);
+        }
+    }
+
+    function switch-to(c: int) {
+        root.category = c;
+        root.current = 0;
+        list.content-y = 0;
+        root.category-changed(c);
+    }
+
+    forward-focus: keys;
+    keys := FocusScope {
+        capture-key-pressed(e) => {
+            if (e.text == Key.Escape) { root.dismiss(); return accept; }
+            if (e.modifiers.control && e.text == ",") { root.open-settings(); return accept; }
+            if (e.text == Key.DownArrow) { root.move(1); return accept; }
+            if (e.text == Key.UpArrow) { root.move(-1); return accept; }
+            if (e.text == Key.Tab && (root.category-key == 0 || (root.category-key == 1 && e.modifiers.control))) {
+                root.switch-to(Math.mod(root.category + (e.modifiers.shift ? 3 : 1), 4));
+                return accept;
+            }
+            if (root.category-key == 2 && e.modifiers.control && (e.text == Key.RightArrow || e.text == Key.LeftArrow)) {
+                root.switch-to(Math.mod(root.category + (e.text == Key.LeftArrow ? 3 : 1), 4));
+                return accept;
+            }
+            if (e.text == Key.Return) {
+                let location = root.open-location-key == 0 ? e.modifiers.control
+                    : root.open-location-key == 1 ? e.modifiers.shift : e.modifiers.alt;
+                if (results.length > 0) { root.activate(root.current, location); }
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
+
+            // Search box: a quiet card, no accent line.
+            Rectangle {
+                height: 48px;
+                border-radius: 8px;
+                background: Theme.card;
+                border-width: 1px;
+                border-color: Theme.stroke;
+                clip: true;
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    Glyph { d: Glyphs.search; y: (parent.height - self.height) / 2; }
+                    Rectangle {
+                        input := TextInput {
+                            text <=> root.query;
+                            font-size: 16px;
+                            color: Theme.text;
+                            selection-background-color: Theme.accent.with-alpha(0.35);
+                            selection-foreground-color: Theme.text;
+                            vertical-alignment: center;
+                            single-line: true;
+                            edited => {
+                                root.current = 0;
+                                list.content-y = 0;
+                                root.query-changed(self.text);
+                            }
+                        }
+                        Text {
+                            visible: root.query == "";
+                            text: root.placeholder;
+                            font-size: 16px;
+                            color: Theme.text-tertiary;
+                            vertical-alignment: center;
+                            x: 0;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 2px;
+                CategoryTab { label: "All"; glyph: Glyphs.all; active: root.category == 0; clicked => { root.switch-to(0); input.focus(); } }
+                CategoryTab { label: "Apps"; glyph: Glyphs.apps; active: root.category == 1; clicked => { root.switch-to(1); input.focus(); } }
+                CategoryTab { label: "Folders"; glyph: Glyphs.folder; active: root.category == 2; clicked => { root.switch-to(2); input.focus(); } }
+                CategoryTab { label: "Files"; glyph: Glyphs.file; active: root.category == 3; clicked => { root.switch-to(3); input.focus(); } }
+                Rectangle { horizontal-stretch: 1; }
+                IconButton { glyph: Glyphs.gear; clicked => { root.open-settings(); } }
+            }
+
+            Rectangle { height: 1px; background: Theme.divider; }
+
+            if root.results.length == 0 && root.query != "": Text {
+                text: root.no-results;
+                font-size: 14px;
+                color: Theme.text-secondary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                vertical-stretch: 1;
+            }
+
+            if root.query == "" && root.notice != "": Text {
+                text: root.notice;
+                font-size: 13px;
+                color: Theme.text-secondary;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                vertical-stretch: 1;
+            }
+
+            list := ScrollView {
+                visible: root.results.length > 0 || (root.query == "" && root.notice == "");
+                vertical-stretch: 1;
+                VerticalLayout {
+                    for item[i] in root.results: Rectangle {
+                        height: item.height;
+                        if item.is-header: SectionHeader { label: item.title-after; }
+                        if !item.is-header: ResultRow {
+                            y: 0;
+                            item: item;
+                            current: root.current == i;
+                            activated => { root.activate(i, false); }
+                            hovered => { root.current = i; }
+                        }
+                    }
+                }
+            }
+
+        }
+    }
+}
+
+// One row of a Windows 11 Settings card: text on the left, control on the right.
+component SettingRow inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    min-height: 68px;
+    border-radius: 6px;
+    background: Theme.card;
+    border-width: 1px;
+    border-color: Theme.stroke;
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 16px;
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+            Text { text: root.title; font-size: 14px; color: Theme.text; wrap: word-wrap; }
+            if root.description != "": Text {
+                text: root.description;
+                font-size: 12px;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            VerticalLayout {
+                alignment: center;
+                @children
+            }
+        }
+    }
+}
+
+export component SettingsWindow inherits Window {
+    in-out property <string> hotkey;
+    in-out property <bool> recording: false;
+    in property <string> hotkey-error;
+    in-out property <bool> desktop-typing;
+    in-out property <int> position;          // 0 top, 1 center
+    in-out property <int> default-category;  // 0 apps, 1 folders, 2 files
+    in-out property <bool> start-with-windows;
+    in-out property <int> open-location-key;  // index into the combo below
+    in-out property <int> category-key;
+    in property <string> index-status;
+    in property <string> version;
+
+    // Turns a key press into "Ctrl+Shift+F" style text, or "" if not usable.
+    // Makes the standard controls follow our light/dark theme.
+    public function sync-theme() {
+        Palette.color-scheme = Theme.dark ? ColorScheme.dark : ColorScheme.light;
+    }
+
+    pure callback describe-hotkey(string, bool, bool, bool, bool) -> string;
+    callback hotkey-chosen(string);
+    callback changed();
+
+    title: "Glint settings";
+    width: 640px;
+    height: 720px;
+    background: Theme.dark ? #202020 : #f3f3f3;
+    default-font-family: Theme.font;
+
+    keys := FocusScope {
+        capture-key-pressed(e) => {
+            if (!root.recording) { return reject; }
+            if (e.text == Key.Escape) { root.recording = false; return accept; }
+            if (e.text == Key.Control || e.text == Key.Shift || e.text == Key.Alt || e.text == Key.Meta) {
+                return accept;
+            }
+            let combo = root.describe-hotkey(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta);
+            if (combo != "") {
+                root.recording = false;
+                root.hotkey-chosen(combo);
+            }
+            accept
+        }
+
+        ScrollView {
+        VerticalLayout {
+            padding: 28px;
+            padding-top: 20px;
+            spacing: 6px;
+
+            Text {
+                text: "Settings";
+                font-size: 28px;
+                font-weight: 600;
+                color: Theme.text;
+            }
+            Rectangle { height: 14px; }
+
+            Text { text: "Opening search"; font-size: 14px; font-weight: 600; color: Theme.text; }
+            SettingRow {
+                title: "Type on the desktop to search";
+                description: "When nothing else is open, any letter you type opens search";
+                Switch {
+                    checked <=> root.desktop-typing;
+                    toggled => { root.changed(); }
+                }
+            }
+            SettingRow {
+                title: "Window position";
+                ComboBox {
+                    model: ["Top of the screen", "Center of the screen"];
+                    current-index <=> root.position;
+                    selected => { root.changed(); }
+                }
+            }
+
+            Rectangle { height: 10px; }
+            Text { text: "Keyboard shortcuts"; font-size: 14px; font-weight: 600; color: Theme.text; }
+            SettingRow {
+                title: "Open search";
+                description: root.recording ? "Press the new keys now, or Esc to cancel"
+                    : (root.hotkey-error != "" ? root.hotkey-error : "Works from any app. Click to record a new shortcut");
+                Button {
+                    text: root.recording ? "Press keys…" : root.hotkey;
+                    min-width: 150px;
+                    clicked => {
+                        root.recording = !root.recording;
+                        keys.focus();
+                    }
+                }
+            }
+            SettingRow {
+                title: "Open file location";
+                description: "Opens the folder that contains the selected result";
+                ComboBox {
+                    min-width: 150px;
+                    model: ["Ctrl+Enter", "Shift+Enter", "Alt+Enter"];
+                    current-index <=> root.open-location-key;
+                    selected => { root.changed(); }
+                }
+            }
+            SettingRow {
+                title: "Next category";
+                description: "Add Shift (or use Left) to go back";
+                ComboBox {
+                    min-width: 150px;
+                    model: ["Tab", "Ctrl+Tab", "Ctrl+Right"];
+                    current-index <=> root.category-key;
+                    selected => { root.changed(); }
+                }
+            }
+            SettingRow {
+                title: "Move · Open · Close";
+                description: "Fixed keys inside the search window. Ctrl+, opens these settings";
+                HorizontalLayout {
+                    spacing: 6px;
+                    for k in ["↑ ↓", "Enter", "Esc"]: Rectangle {
+                        width: kt.preferred-width + 14px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: Theme.keycap;
+                        kt := Text { text: k; font-size: 12px; color: Theme.text-secondary; }
+                    }
+                }
+            }
+
+            Rectangle { height: 10px; }
+            Text { text: "Results"; font-size: 14px; font-weight: 600; color: Theme.text; }
+            SettingRow {
+                title: "Show first";
+                description: "The category selected when search opens";
+                ComboBox {
+                    model: ["All", "Apps", "Folders", "Files"];
+                    current-index <=> root.default-category;
+                    selected => { root.changed(); }
+                }
+            }
+
+            Rectangle { height: 10px; }
+            Text { text: "System"; font-size: 14px; font-weight: 600; color: Theme.text; }
+            SettingRow {
+                title: "Start with Windows";
+                description: "Runs quietly in the background after you sign in";
+                Switch {
+                    checked <=> root.start-with-windows;
+                    toggled => { root.changed(); }
+                }
+            }
+            SettingRow {
+                title: "Index";
+                description: root.index-status;
+                Text { text: root.version; font-size: 12px; color: Theme.text-tertiary; }
+            }
+        }
+        }
+    }
+}
