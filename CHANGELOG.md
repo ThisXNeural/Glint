@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-10-27
+
+### Added
+- Run commands from search: type `>` and a command, like the Run dialog.
+  <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> runs it (or an app) as administrator.
+- Custom shortcuts in Settings: any key combination runs a command from anywhere,
+  optionally as administrator.
+- Default shortcut <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> opens Windows Terminal as
+  administrator (PowerShell when Windows Terminal isn't installed).
+
 ## [0.3.2] - 2026-10-27
 
 ### Fixed
@@ -45,6 +55,7 @@ All notable changes are listed here. The format follows
 
 - First version: NTFS index, desktop typing trigger, global shortcut, acrylic window, settings.
 
+[0.4.0]: https://github.com/ThisXNeural/Glint/releases/tag/v0.4.0
 [0.3.2]: https://github.com/ThisXNeural/Glint/releases/tag/v0.3.2
 [0.3.1]: https://github.com/ThisXNeural/Glint/releases/tag/v0.3.1
 [0.3.0]: https://github.com/ThisXNeural/Glint/releases/tag/v0.3.0

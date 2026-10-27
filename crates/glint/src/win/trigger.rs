@@ -38,6 +38,8 @@ pub enum Trigger {
     Quit,
     /// A window (raw HWND) took the foreground; may be our own.
     ForegroundChanged(isize),
+    /// Custom shortcut number n (its index in the settings) was pressed.
+    Shortcut(usize),
 }
 
 pub struct Config {
@@ -45,6 +47,8 @@ pub struct Config {
     /// Shown next to "Open search" in the tray menu.
     pub hotkey_label: String,
     pub hotkey: Option<(HOT_KEY_MODIFIERS, u32)>,
+    /// Custom shortcuts, in settings order; `None` for unparsable ones.
+    pub shortcuts: Vec<Option<(HOT_KEY_MODIFIERS, u32)>>,
 }
 
 type Sink = Box<dyn Fn(Trigger) + Send + Sync>;
@@ -54,9 +58,16 @@ static THREAD: OnceLock<u32> = OnceLock::new();
 static DESKTOP_TYPING: AtomicBool = AtomicBool::new(true);
 /// Where the trigger thread reports whether a new hotkey registered.
 static HOTKEY_REPLY: Mutex<Option<mpsc::Sender<bool>>> = Mutex::new(None);
+/// Custom shortcuts waiting to be registered, and where to report which worked.
+#[allow(clippy::type_complexity)]
+static SHORTCUTS: Mutex<Option<(Vec<Option<(HOT_KEY_MODIFIERS, u32)>>, mpsc::Sender<Vec<bool>>)>> = Mutex::new(None);
 
 const WM_SET_HOTKEY: u32 = WM_APP + 1;
 const WM_REFRESH_HOOK: u32 = WM_APP + 2;
+const WM_SET_SHORTCUTS: u32 = WM_APP + 3;
+/// Hotkey ids: 1 opens search, SHORTCUT_BASE + n is custom shortcut n.
+const SHORTCUT_BASE: usize = 100;
+const MAX_SHORTCUTS: usize = 64;
 
 thread_local! {
     static HOOK: Cell<Option<HHOOK>> = const { Cell::new(None) };
@@ -87,6 +98,35 @@ pub fn set_hotkey(hotkey: (HOT_KEY_MODIFIERS, u32)) -> bool {
     rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or(false)
 }
 
+/// Replaces the custom shortcuts. Returns, per shortcut, whether it could be
+/// registered (false: invalid, or another app already owns it).
+pub fn set_shortcuts(list: Vec<Option<(HOT_KEY_MODIFIERS, u32)>>) -> Vec<bool> {
+    let n = list.len();
+    let Some(&tid) = THREAD.get() else { return vec![false; n] };
+    let (tx, rx) = mpsc::channel();
+    *SHORTCUTS.lock().unwrap() = Some((list, tx));
+    unsafe {
+        if PostThreadMessageW(tid, WM_SET_SHORTCUTS, WPARAM(0), LPARAM(0)).is_err() {
+            return vec![false; n];
+        }
+    }
+    rx.recv_timeout(std::time::Duration::from_secs(2)).unwrap_or_else(|_| vec![false; n])
+}
+
+unsafe fn register_shortcuts(list: &[Option<(HOT_KEY_MODIFIERS, u32)>]) -> Vec<bool> {
+    for id in SHORTCUT_BASE..SHORTCUT_BASE + MAX_SHORTCUTS {
+        let _ = UnregisterHotKey(None, id as i32);
+    }
+    list.iter()
+        .take(MAX_SHORTCUTS)
+        .enumerate()
+        .map(|(i, k)| match k {
+            Some((m, vk)) => RegisterHotKey(None, (SHORTCUT_BASE + i) as i32, *m | MOD_NOREPEAT, *vk).is_ok(),
+            None => false,
+        })
+        .collect()
+}
+
 pub fn set_desktop_typing(on: bool) {
     DESKTOP_TYPING.store(on, Ordering::SeqCst);
     if let Some(&tid) = THREAD.get() {
@@ -108,6 +148,7 @@ unsafe fn run(config: Config, ready: std::sync::mpsc::Sender<bool>) {
     let _ = THREAD.set(GetCurrentThreadId());
     DESKTOP_TYPING.store(config.desktop_typing, Ordering::SeqCst);
     let ok = register(config.hotkey);
+    register_shortcuts(&config.shortcuts);
     SetWinEventHook(
         EVENT_SYSTEM_FOREGROUND,
         EVENT_SYSTEM_FOREGROUND,
@@ -124,7 +165,13 @@ unsafe fn run(config: Config, ready: std::sync::mpsc::Sender<bool>) {
     let mut msg = MSG::default();
     while GetMessageW(&mut msg, None, 0, 0).as_bool() {
         match msg.message {
+            WM_HOTKEY if msg.wParam.0 >= SHORTCUT_BASE => emit(Trigger::Shortcut(msg.wParam.0 - SHORTCUT_BASE)),
             WM_HOTKEY => emit(Trigger::Hotkey),
+            WM_SET_SHORTCUTS => {
+                if let Some((list, tx)) = SHORTCUTS.lock().unwrap().take() {
+                    let _ = tx.send(register_shortcuts(&list));
+                }
+            }
             WM_SET_HOTKEY => {
                 let ok = register(Some((HOT_KEY_MODIFIERS(msg.wParam.0 as u32), msg.lParam.0 as u32)));
                 if let Some(tx) = HOTKEY_REPLY.lock().unwrap().take() {

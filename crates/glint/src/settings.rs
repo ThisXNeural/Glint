@@ -4,6 +4,33 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+/// A global shortcut that runs a command, e.g. Ctrl+Alt+T for a terminal.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Shortcut {
+    pub hotkey: String,
+    pub command: String,
+    pub admin: bool,
+}
+
+impl Shortcut {
+    /// `Ctrl+Alt+T | wt.exe | admin`
+    fn parse(v: &str) -> Option<Self> {
+        let mut parts = v.splitn(3, '|').map(str::trim);
+        let hotkey = parts.next()?.to_string();
+        let command = parts.next()?.to_string();
+        let admin = parts.next().is_some_and(|a| a.eq_ignore_ascii_case("admin"));
+        (!command.is_empty()).then_some(Self { hotkey, command, admin })
+    }
+
+    fn line(&self) -> String {
+        format!("shortcut={} | {}{}\n", self.hotkey, self.command, if self.admin { " | admin" } else { "" })
+    }
+
+    pub fn terminal_as_admin() -> Self {
+        Self { hotkey: "Ctrl+Alt+T".into(), command: "wt.exe".into(), admin: true }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Settings {
     /// Shortcut that opens search from any app, e.g. "Alt+Space".
@@ -20,11 +47,13 @@ pub struct Settings {
     pub open_location_key: i32,
     /// Index into [`CATEGORY_KEYS`].
     pub category_key: i32,
+    /// Global shortcuts that run commands.
+    pub shortcuts: Vec<Shortcut>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { hotkey: "Alt+Space".into(), desktop_typing: true, position: "top".into(), default_category: 1, start_with_windows: true, open_location_key: 0, category_key: 0 }
+        Self { hotkey: "Alt+Space".into(), desktop_typing: true, position: "top".into(), default_category: 1, start_with_windows: true, open_location_key: 0, category_key: 0, shortcuts: vec![Shortcut::terminal_as_admin()] }
     }
 }
 
@@ -66,6 +95,7 @@ impl Settings {
             s.save();
             return s;
         };
+        let mut shortcuts: Option<Vec<Shortcut>> = None;
         for line in text.lines() {
             let Some((k, v)) = line.split_once('=') else { continue };
             let v = v.trim();
@@ -81,8 +111,14 @@ impl Settings {
                 "start_with_windows" => s.start_with_windows = v != "false",
                 "open_location_key" => s.open_location_key = key_index(&OPEN_LOCATION_KEYS, v),
                 "category_key" => s.category_key = key_index(&CATEGORY_KEYS, v),
+                // A bare "shortcut=" means the list was emptied on purpose;
+                // files without any keep the default terminal shortcut.
+                "shortcut" => shortcuts.get_or_insert_with(Vec::new).extend(Shortcut::parse(v)),
                 _ => {}
             }
+        }
+        if let Some(list) = shortcuts {
+            s.shortcuts = list;
         }
         s
     }
@@ -100,7 +136,11 @@ impl Settings {
             self.start_with_windows,
             OPEN_LOCATION_KEYS[self.open_location_key as usize],
             CATEGORY_KEYS[self.category_key as usize],
-        );
+        ) + &if self.shortcuts.is_empty() {
+            "shortcut=\n".to_string()
+        } else {
+            self.shortcuts.iter().map(Shortcut::line).collect()
+        };
         let _ = std::fs::write(settings_path(), text);
     }
 }
@@ -121,4 +161,20 @@ pub fn save_usage(usage: &HashMap<String, u32>) {
     let _ = std::fs::create_dir_all(dir());
     let text: String = usage.iter().map(|(t, n)| format!("{n}\t{t}\n")).collect();
     let _ = std::fs::write(usage_path(), text);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Shortcut;
+
+    #[test]
+    fn shortcut_lines() {
+        let s = Shortcut::terminal_as_admin();
+        let line = s.line();
+        assert_eq!(line, "shortcut=Ctrl+Alt+T | wt.exe | admin\n");
+        assert_eq!(Shortcut::parse(line.trim_end().strip_prefix("shortcut=").unwrap()), Some(s));
+        let p = Shortcut::parse("Win+N | notepad C:\\a|b.txt").unwrap();
+        assert_eq!((p.command.as_str(), p.admin), ("notepad C:\\a", false));
+        assert_eq!(Shortcut::parse(""), None);
+    }
 }

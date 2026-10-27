@@ -26,6 +26,32 @@ pub fn open(target: &str) {
     }
 }
 
+/// Starts `program` with `args` through the shell, so app aliases, URLs,
+/// documents and `ms-settings:` links all work like in the Run dialog.
+/// `admin` uses the "runas" verb. On failure, tells whether the program
+/// wasn't found (as opposed to e.g. the UAC prompt being declined).
+pub fn execute(program: &str, args: &str, admin: bool) -> Result<(), bool> {
+    let verb = wide(if admin { "runas" } else { "open" });
+    let file = wide(program);
+    let params = wide(args);
+    let dir = std::env::var("USERPROFILE").map(|d| wide(&d)).ok();
+    let r = unsafe {
+        ShellExecuteW(
+            None,
+            pcwstr(&verb),
+            pcwstr(&file),
+            if args.is_empty() { PCWSTR::null() } else { pcwstr(&params) },
+            dir.as_ref().map_or(PCWSTR::null(), |d| pcwstr(d)),
+            SW_SHOWNORMAL,
+        )
+    };
+    // Values above 32 mean success; 2 and 3 are file and path not found.
+    match r.0 as isize {
+        n if n > 32 => Ok(()),
+        n => Err(n == 2 || n == 3),
+    }
+}
+
 /// Opens Explorer with the item selected.
 pub fn open_containing_folder(path: &str) {
     let op = wide("open");

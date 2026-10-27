@@ -50,6 +50,8 @@ pub enum RowKind {
     App,
     Folder,
     File,
+    /// A Run-box command typed after ">".
+    Command,
 }
 
 impl Row {
@@ -62,6 +64,7 @@ impl Row {
         match self.kind {
             RowKind::Header => String::new(),
             RowKind::App => "App".into(),
+            RowKind::Command => "Run".into(),
             RowKind::Folder => "Folder".into(),
             RowKind::File => match self.title.rsplit_once('.') {
                 Some((stem, ext)) if !stem.is_empty() && ext.len() <= 8 => format!("{} file", ext.to_ascii_uppercase()),
@@ -79,6 +82,15 @@ pub struct Engine {
 
 impl Engine {
     pub fn search(&self, query: &str, category: Category) -> Vec<Row> {
+        if let Some(cmd) = crate::command::from_query(query) {
+            return vec![Row {
+                title: if cmd.is_empty() { "Type a command to run".into() } else { cmd.to_string() },
+                subtitle: "Enter runs it · Ctrl+Shift+Enter runs it as administrator".into(),
+                target: cmd.to_string(),
+                kind: RowKind::Command,
+                matched: None,
+            }];
+        }
         let mut rows = match category {
             Category::Apps => self.apps(query, LIMIT),
             Category::Folders => self.files(query, Kind::Folder, LIMIT),

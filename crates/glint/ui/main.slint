@@ -1,5 +1,14 @@
 // Search window styled after the Windows 11 Start menu search.
-import { ScrollView, Switch, ComboBox, Button, Palette } from "std-widgets.slint";
+import { ScrollView, Switch, ComboBox, Button, Palette, LineEdit, CheckBox } from "std-widgets.slint";
+
+// A global shortcut that runs a command.
+export struct CustomShortcut {
+    hotkey: string,
+    command: string,
+    admin: bool,
+    // Why the shortcut doesn't work, e.g. taken by another app.
+    error: string,
+}
 
 export struct ResultItem {
     // A section title ("Apps", "Files") rather than a result.
@@ -46,6 +55,7 @@ export global Glyphs {
     out property <string> all: "M 2 2 L 7 2 L 7 7 L 2 7 Z M 9 2 L 14 2 L 14 7 L 9 7 Z M 2 9 L 7 9 L 7 14 L 2 14 Z M 9 9 L 14 9 L 14 14 L 9 14 Z";
     out property <string> apps: "M 3 1.5 L 13 1.5 A 1.5 1.5 0 0 1 14.5 3 L 14.5 13 A 1.5 1.5 0 0 1 13 14.5 L 3 14.5 A 1.5 1.5 0 0 1 1.5 13 L 1.5 3 A 1.5 1.5 0 0 1 3 1.5 Z M 1.5 5 L 14.5 5";
     out property <string> folder: "M 1.5 3.5 L 6 3.5 L 7.5 5 L 14.5 5 L 14.5 13.5 L 1.5 13.5 Z";
+    out property <string> close: "M 4 4 L 12 12 M 12 4 L 4 12";
     out property <string> file: "M 3.5 1.5 L 9.5 1.5 L 12.5 4.5 L 12.5 14.5 L 3.5 14.5 Z M 9.5 1.5 L 9.5 4.5 L 12.5 4.5";
     out property <string> gear: "M 6.8 1 L 9.2 1 L 9.6 2.9 L 11.1 3.5 L 12.7 2.4 L 14.4 4.1 L 13.3 5.7 L 13.9 7.2 L 15.8 7.6 L 15.8 10 L 13.9 10.4 L 13.3 11.9 L 14.4 13.5 L 12.7 15.2 L 11.1 14.1 L 9.6 14.7 L 9.2 16.6 L 6.8 16.6 L 6.4 14.7 L 4.9 14.1 L 3.3 15.2 L 1.6 13.5 L 2.7 11.9 L 2.1 10.4 L 0.2 10 L 0.2 7.6 L 2.1 7.2 L 2.7 5.7 L 1.6 4.1 L 3.3 2.4 L 4.9 3.5 L 6.4 2.9 Z M 8 6.3 A 2.5 2.5 0 1 0 8.01 6.3 Z";
 }
@@ -236,7 +246,7 @@ export component SearchWindow inherits Window {
 
     callback query-changed(string);
     callback category-changed(int);
-    callback activate(int, bool);   // index, open containing folder
+    callback activate(int, bool, bool);   // index, open containing folder, as administrator
     callback dismiss();
     callback open-settings();
     // Next selectable row from `current` going `delta` steps, skipping headers.
@@ -293,10 +303,14 @@ export component SearchWindow inherits Window {
                 root.switch-to(Math.mod(root.category + (e.text == Key.LeftArrow ? 3 : 1), 4));
                 return accept;
             }
+            if (e.text == Key.Return && e.modifiers.control && e.modifiers.shift) {
+                if (results.length > 0) { root.activate(root.current, false, true); }
+                return accept;
+            }
             if (e.text == Key.Return) {
                 let location = root.open-location-key == 0 ? e.modifiers.control
                     : root.open-location-key == 1 ? e.modifiers.shift : e.modifiers.alt;
-                if (results.length > 0) { root.activate(root.current, location); }
+                if (results.length > 0) { root.activate(root.current, location, false); }
                 return accept;
             }
             reject
@@ -388,7 +402,7 @@ export component SearchWindow inherits Window {
                             y: 0;
                             item: item;
                             current: root.current == i;
-                            activated => { root.activate(i, false); }
+                            activated => { root.activate(i, false, false); }
                             hovered => { root.current = i; }
                         }
                     }
@@ -444,6 +458,9 @@ export component SettingsWindow inherits Window {
     in-out property <bool> start-with-windows;
     in-out property <int> open-location-key;  // index into the combo below
     in-out property <int> category-key;
+    in-out property <[CustomShortcut]> shortcuts;
+    // Which custom shortcut is waiting for keys, or -1.
+    in-out property <int> recording-shortcut: -1;
     in property <string> index-status;
     in property <string> version;
 
@@ -456,6 +473,10 @@ export component SettingsWindow inherits Window {
     pure callback describe-hotkey(string, bool, bool, bool, bool) -> string;
     callback hotkey-chosen(string);
     callback changed();
+    callback shortcut-hotkey-chosen(int, string);
+    callback shortcut-edited(int, string, bool);   // index, command, as administrator
+    callback add-shortcut();
+    callback remove-shortcut(int);
 
     title: "Glint settings";
     width: 640px;
@@ -465,6 +486,19 @@ export component SettingsWindow inherits Window {
 
     keys := FocusScope {
         capture-key-pressed(e) => {
+            if (root.recording-shortcut >= 0) {
+                if (e.text == Key.Escape) { root.recording-shortcut = -1; return accept; }
+                if (e.text == Key.Control || e.text == Key.Shift || e.text == Key.Alt || e.text == Key.Meta) {
+                    return accept;
+                }
+                let combo = root.describe-hotkey(e.text, e.modifiers.control, e.modifiers.alt, e.modifiers.shift, e.modifiers.meta);
+                if (combo != "") {
+                    let i = root.recording-shortcut;
+                    root.recording-shortcut = -1;
+                    root.shortcut-hotkey-chosen(i, combo);
+                }
+                return accept;
+            }
             if (!root.recording) { return reject; }
             if (e.text == Key.Escape) { root.recording = false; return accept; }
             if (e.text == Key.Control || e.text == Key.Shift || e.text == Key.Alt || e.text == Key.Meta) {
@@ -557,6 +591,69 @@ export component SettingsWindow inherits Window {
                         background: Theme.keycap;
                         kt := Text { text: k; font-size: 12px; color: Theme.text-secondary; }
                     }
+                }
+            }
+
+            Rectangle { height: 10px; }
+            Text { text: "Custom shortcuts"; font-size: 14px; font-weight: 600; color: Theme.text; }
+            Text {
+                text: "Run any command from anywhere, like the Run dialog. Type > in search to run a command once.";
+                font-size: 12px;
+                color: Theme.text-secondary;
+                wrap: word-wrap;
+            }
+            for sc[i] in root.shortcuts: Rectangle {
+                min-height: 60px;
+                border-radius: 6px;
+                background: Theme.card;
+                border-width: 1px;
+                border-color: Theme.stroke;
+                VerticalLayout {
+                    padding-left: 14px;
+                    padding-right: 10px;
+                    padding-top: 10px;
+                    padding-bottom: 10px;
+                    spacing: 4px;
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Button {
+                            text: root.recording-shortcut == i ? "Press keys…" : (sc.hotkey == "" ? "Set keys" : sc.hotkey);
+                            min-width: 130px;
+                            clicked => {
+                                root.recording = false;
+                                root.recording-shortcut = root.recording-shortcut == i ? -1 : i;
+                                keys.focus();
+                            }
+                        }
+                        LineEdit {
+                            text: sc.command;
+                            placeholder-text: "Command, e.g. wt.exe or notepad";
+                            horizontal-stretch: 1;
+                            edited(t) => { root.shortcut-edited(i, t, sc.admin); }
+                        }
+                        CheckBox {
+                            text: "Admin";
+                            checked: sc.admin;
+                            toggled => { root.shortcut-edited(i, sc.command, self.checked); }
+                        }
+                        IconButton {
+                            glyph: Glyphs.close;
+                            y: (parent.height - self.height) / 2;
+                            clicked => { root.remove-shortcut(i); }
+                        }
+                    }
+                    if sc.error != "": Text {
+                        text: sc.error;
+                        font-size: 12px;
+                        color: #e81123;
+                    }
+                }
+            }
+            HorizontalLayout {
+                alignment: start;
+                Button {
+                    text: "Add shortcut";
+                    clicked => { root.add-shortcut(); }
                 }
             }
 

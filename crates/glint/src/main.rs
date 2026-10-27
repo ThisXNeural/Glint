@@ -4,6 +4,7 @@
 
 slint::include_modules!();
 
+mod command;
 mod engine;
 mod settings;
 mod settings_ui;
@@ -131,13 +132,13 @@ fn main() {
         let ui_weak = ui.as_weak();
         let shared = shared.clone();
         let current_rows = current_rows.clone();
-        ui.on_activate(move |i, containing_folder| {
+        ui.on_activate(move |i, containing_folder, admin| {
             let Some(row) = current_rows.borrow().get(i as usize).cloned() else { return };
-            if row.kind == RowKind::Header {
+            if row.kind == RowKind::Header || (row.kind == RowKind::Command && row.target.is_empty()) {
                 return;
             }
             hide(&ui_weak.unwrap());
-            open_row(&shared, &row, containing_folder);
+            open_row(&shared, &row, containing_folder, admin);
         });
     }
 
@@ -320,6 +321,10 @@ fn icon_fast(row: &Row) -> Option<Icon> {
         RowKind::App => win::icons::for_item(&row.target),
         RowKind::Folder => win::icons::for_kind(true, &row.title),
         RowKind::File => win::icons::for_kind(false, &row.title).or_else(|| win::icons::for_item(&row.target)),
+        RowKind::Command => {
+            let root = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+            win::icons::for_item(&format!(r"{root}\System32\cmd.exe"))
+        }
     }?;
     Some(Icon { size: px.size, rgba: px.rgba })
 }
@@ -340,6 +345,7 @@ fn icon_fast(row: &Row) -> Option<Icon> {
         RowKind::Folder => "folder".to_string(),
         RowKind::File => row.title.rsplit_once('.').map_or("file".into(), |(_, e)| e.to_ascii_lowercase()),
         RowKind::App => row.title.clone(),
+        RowKind::Command => "Terminal".to_string(),
     };
     let rgba = std::fs::read(format!("{dir}/{key}.rgba")).ok()?;
     Some(Icon { size: 48, rgba: Arc::new(rgba) })
@@ -350,7 +356,18 @@ fn icon_exact(_: &Row) -> Option<Icon> {
     None
 }
 
-fn open_row(shared: &Shared, row: &Row, containing_folder: bool) {
+fn open_row(shared: &Shared, row: &Row, containing_folder: bool, admin: bool) {
+    if row.kind == RowKind::Command {
+        command::run(&row.target, admin);
+        return;
+    }
+    if admin && row.kind == RowKind::App {
+        // Same as "Run as administrator" in the Start menu.
+        #[cfg(windows)]
+        let _ = win::shell::execute(&row.target, "", true);
+        shared.engine.record_launch(row);
+        return;
+    }
     if row.kind == RowKind::App {
         shared.engine.record_launch(row);
         let mut usage = shared.usage.lock().unwrap();
@@ -588,6 +605,7 @@ fn platform_start(ui: &SearchWindow, settings: &Settings, send_query: Rc<dyn Fn(
             desktop_typing: settings.desktop_typing,
             hotkey_label: settings.hotkey.clone(),
             hotkey: trigger::parse_hotkey(&settings.hotkey),
+            shortcuts: settings.shortcuts.iter().map(|s| if s.command.is_empty() { None } else { trigger::parse_hotkey(&s.hotkey) }).collect(),
         },
         move |t: Trigger| {
             let ui_weak = ui_weak.clone();
@@ -616,6 +634,11 @@ fn platform_start(ui: &SearchWindow, settings: &Settings, send_query: Rc<dyn Fn(
                                 hide(&ui);
                             } else {
                                 show(&ui, &settings, None, sq.as_ref());
+                            }
+                        }
+                        Trigger::Shortcut(i) => {
+                            if let Some(s) = settings.shortcuts.get(i) {
+                                command::run(&s.command, s.admin);
                             }
                         }
                         Trigger::ForegroundChanged(hwnd) => {

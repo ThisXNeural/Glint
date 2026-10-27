@@ -27,6 +27,9 @@ Glint یک جستجوگر سبک و بسیار سریع برای ویندوز ا
 - **سرعت در حد Everything:** نام فایل‌ها مستقیم از جدول MFT در NTFS خوانده می‌شود و با USN Journal به‌روز می‌ماند.
 - **دسته‌بندی‌ها:** همه، برنامه‌ها، پوشه‌ها و فایل‌ها. با <kbd>Tab</kbd> بینشان جابه‌جا شوید.
 - **رتبه‌بندی هوشمند:** نتایجی که با متن شما شروع می‌شوند اول می‌آیند و بخش منطبق پررنگ می‌شود.
+- **اجرای دستور:** با تایپ `>` در ابتدای متن، هر دستوری مثل پنجرهٔ Run اجرا می‌شود (مثلاً `>cmd` یا `>ms-settings:`).
+- **میانبرهای دلخواه:** هر کلید ترکیبی را به یک دستور وصل کنید، با امکان اجرا به‌صورت ادمین. پیش‌فرض: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> ترمینال را به‌صورت ادمین باز می‌کند.
+- **جستجوی فارسی:** «ی/ي» و «ک/ك»، نیم‌فاصله و اعداد فارسی درست تطبیق داده می‌شوند.
 - **ظاهر ویندوز ۱۱:** فونت Segoe UI Variable، افکت Acrylic، و پیروی از حالت روشن/تیره و رنگ اصلی سیستم.
 - **مصرف بسیار کم:** نوشته‌شده با Rust، بدون مرورگر داخلی و بدون .NET. در حالت بیکار تقریباً صفر درصد CPU مصرف می‌کند.
 - **آیکون واقعی:** آیکون اصلی هر برنامه، پوشه و فایل نمایش داده می‌شود.
@@ -62,6 +65,8 @@ Glint یک جستجوگر سبک و بسیار سریع برای ویندوز ا
 | <kbd>Enter</kbd> | باز کردن |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | باز کردن محل فایل (قابل تغییر) |
 | <kbd>Tab</kbd> | دستهٔ بعدی (قابل تغییر) |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | اجرا به‌صورت ادمین |
+| <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> | ترمینال ادمین (از هر جا، قابل تغییر) |
 | <kbd>Ctrl</kbd>+<kbd>,</kbd> | تنظیمات |
 | <kbd>Esc</kbd> | بستن |
 
@@ -94,6 +99,9 @@ Glint is a lightweight, very fast search tool for Windows. It sleeps in the back
 - **Everything-level speed:** file names are read straight from the NTFS master file table and kept live through the USN change journal.
 - **Categories:** All, Apps, Folders and Files. <kbd>Tab</kbd> switches between them.
 - **Smart ranking:** names that start with what you type come first, and the matched part is highlighted.
+- **Run commands:** start with `>` to run anything the Run dialog can (`>cmd`, `>ms-settings:`, `>ipconfig /all`).
+- **Custom shortcuts:** bind any key combination to a command, optionally as administrator. Default: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> opens Terminal as administrator.
+- **Persian-aware:** ی/ي, ک/ك, the half-space and Persian digits all match.
 - **Windows 11 look:** Segoe UI Variable, acrylic backdrop, follows the system light/dark theme and accent color.
 - **Tiny footprint:** native Rust, no embedded browser, no .NET runtime. Near-zero CPU while idle.
 - **Real icons** for every app, folder and file.
@@ -129,6 +137,8 @@ Silent install: `GlintSetup.exe /S` or `GlintSetup.exe /S /MODE=admin`.
 | <kbd>Enter</kbd> | Open |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Open file location (configurable) |
 | <kbd>Tab</kbd> | Next category (configurable) |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | Run as administrator |
+| <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>T</kbd> | Terminal as administrator (from anywhere, configurable) |
 | <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings |
 | <kbd>Esc</kbd> | Close |
 
@@ -144,6 +154,7 @@ show_first=apps           # all, apps, folders or files
 start_with_windows=true
 open_location_key=Ctrl+Enter
 category_key=Tab
+shortcut=Ctrl+Alt+T | wt.exe | admin    # one line per custom shortcut
 ```
 
 ### Build from source
