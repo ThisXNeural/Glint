@@ -1,11 +1,16 @@
 name: Release
 
-# Push a tag like v0.3.0 to build, sign (when a certificate is configured)
-# and publish a GitHub release with the app and its setup.
+# Push a tag like v0.3.0, or run this workflow by hand with a version, to
+# build, sign (when a certificate is configured) and publish a GitHub release
+# with the app and its setup.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create, e.g. v0.3.0 (empty: build only)"
+        required: false
 
 permissions:
   contents: write
@@ -45,9 +50,12 @@ jobs:
         run: rm -f "$RUNNER_TEMP/cert.pfx"
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: Glint ${{ inputs.tag || github.ref_name }}
           generate_release_notes: true
           files: |
             installer/out/GlintSetup.exe
@@ -55,7 +63,7 @@ jobs:
             installer/out/SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
-        if: "!startsWith(github.ref, 'refs/tags/')"
+        if: "!startsWith(github.ref, 'refs/tags/') && inputs.tag == ''"
         with:
           name: glint-windows-x64
           path: installer/out/*
