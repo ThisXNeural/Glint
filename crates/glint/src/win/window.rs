@@ -73,6 +73,13 @@ pub fn style(hwnd: HWND, dark: bool) {
             0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
         );
+        // Windows 10 composes a glass frame over GDI-drawn content
+        // differently, which can leave the window see-through or blank, so
+        // it keeps a plain opaque popup.
+        if super::shell::windows_build() < 22000 {
+            set_dark(hwnd, dark);
+            return;
+        }
         let corner = DWMWCP_ROUND;
         let _ = DwmSetWindowAttribute(
             hwnd,
@@ -134,14 +141,18 @@ pub fn force_foreground(hwnd: HWND) {
 }
 
 /// Turns the acrylic material on or off and returns whether it is on.
-/// Windows 11 22H2+ has it built in; Windows 10 and early 11 get the same
-/// blur through the accent policy the Start menu and taskbar use.
+/// Windows 11 22H2+ has it built in; early Windows 11 gets the same blur
+/// through the accent policy the Start menu and taskbar use. Windows 10
+/// stays opaque (see [`style`]).
 pub fn set_acrylic(hwnd: HWND, on: bool, dark: bool, build: u32) -> bool {
     unsafe {
         if build >= 22523 {
             let kind = if on { DWMSBT_TRANSIENTWINDOW } else { DWMSBT_NONE };
             let ok = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &kind as *const _ as *const _, 4).is_ok();
             return on && ok;
+        }
+        if build < 22000 {
+            return false;
         }
         // Tint as 0xAABBGGRR, matching the Windows 10 Start menu.
         let tint: u32 = if dark { 0xCC20_2020 } else { 0xCCF3_F3F3 };

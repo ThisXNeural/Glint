@@ -23,13 +23,50 @@ impl Tier {
     }
 }
 
-/// Case-insensitive match of `q` (already lowercase) against `name`. Higher
-/// scores are better and every tier outranks all lower tiers.
+/// Spelling variants that should match each other, mostly from Persian and
+/// Arabic keyboards: Arabic Yeh/Kaf vs Persian ی/ک, Teh Marbuta, Hamza
+/// forms of Alef, Persian and Arabic digits. Diacritics, tatweel and the
+/// zero-width non-joiner are dropped, so "می‌خواهم" matches "میخواهم".
+pub fn fold_char(c: char) -> Option<char> {
+    Some(match c {
+        'ي' | 'ى' | 'ئ' => 'ی',
+        'ك' => 'ک',
+        'ة' | 'ۀ' | 'ہ' => 'ه',
+        'أ' | 'إ' | 'آ' | 'ٱ' => 'ا',
+        'ؤ' => 'و',
+        '۰'..='۹' => char::from(b'0' + (c as u32 - '۰' as u32) as u8),
+        '٠'..='٩' => char::from(b'0' + (c as u32 - '٠' as u32) as u8),
+        '\u{064B}'..='\u{065F}' | '\u{0670}' | '\u{0640}' | '\u{200C}' | '\u{200D}' | '\u{200F}' | '\u{200E}' => return None,
+        _ => c,
+    })
+}
+
+/// `s` with [`fold_char`] applied; borrowed when nothing changes.
+pub fn fold(s: &str) -> std::borrow::Cow<'_, str> {
+    if s.chars().all(|c| fold_char(c) == Some(c)) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    std::borrow::Cow::Owned(s.chars().filter_map(fold_char).collect())
+}
+
+/// Text the search box and ranking compare: lowercase and folded.
+pub fn normalize(s: &str) -> String {
+    fold(&s.to_lowercase()).into_owned()
+}
+
+/// Right-to-left scripts (Persian, Arabic, Hebrew). Their names are shown
+/// as one piece, since splitting them into styled runs breaks the order.
+pub fn is_rtl(s: &str) -> bool {
+    s.chars().any(|c| matches!(c as u32, 0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF))
+}
+
+/// Case-insensitive match of `q` (already [`normalize`]d) against `name`.
+/// Higher scores are better and every tier outranks all lower tiers.
 pub fn score(name: &str, q: &str) -> Option<(Tier, i32)> {
     if q.is_empty() {
         return Some((Tier::Exact, 0));
     }
-    let lower = name.to_lowercase();
+    let lower = normalize(name);
     let len_penalty = lower.chars().count() as i32;
     let make = |tier: Tier, fine: i32| Some((tier, tier as i32 * 10_000 + fine.clamp(-9_999, 9_999)));
 
@@ -69,7 +106,7 @@ fn word_start(lower: &str, q: &str) -> Option<usize> {
 /// `name`: the match at a word start if there is one, else the first match.
 pub fn highlight(name: &str, q: &str) -> Option<(usize, usize)> {
     let q: Vec<char> = q.trim().to_lowercase().chars().collect();
-    if q.is_empty() {
+    if q.is_empty() || is_rtl(name) {
         return None;
     }
     let chars: Vec<(usize, char)> = name.char_indices().collect();
@@ -153,11 +190,21 @@ mod tests {
     }
 
     #[test]
+    fn persian_variants() {
+        // Arabic Yeh and Kaf in the name, Persian keyboard in the query.
+        assert!(score("كتاب ملي", &normalize("کتاب ملی")).is_some());
+        assert_eq!(score("می‌خواهم", &normalize("میخواهم")).map(|m| m.0), Some(Tier::Exact));
+        assert_eq!(score("گزارش ۱۴۰۳", &normalize("1403")).map(|m| m.0), Some(Tier::WordStart));
+        assert_eq!(score("گزارش سالانه", &normalize("سال")).map(|m| m.0), Some(Tier::WordStart));
+        assert!(is_rtl("گزارش") && !is_rtl("Report"));
+    }
+
+    #[test]
     fn highlights() {
         assert_eq!(highlight("Hello World", "wor"), Some((6, 9)));
         assert_eq!(highlight("Shell Hello", "hell"), Some((6, 10)));
         assert_eq!(highlight("PowerShell", "hell"), Some((6, 10)));
-        assert_eq!(highlight("گزارش سالانه", "سال"), Some((11, 17)));
+        assert_eq!(highlight("گزارش سالانه", "سال"), None);
         assert_eq!(highlight("Paint", "x"), None);
     }
 }

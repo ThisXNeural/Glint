@@ -36,7 +36,7 @@ impl AppIndex {
     /// (or have a word that does) win outright: "hell" finds "Hello" and,
     /// only when nothing starts that way, "Shell".
     pub fn search(&self, query: &str, limit: usize) -> Vec<&App> {
-        let q = query.trim().to_lowercase();
+        let q = rank::normalize(query.trim());
         let mut hits: Vec<(rank::Tier, i32, &App)> = self
             .apps
             .iter()

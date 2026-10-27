@@ -4,8 +4,11 @@
 //!
 //! Memory per entry: the name bytes + 1 separator + 9 bytes of metadata.
 
-use std::collections::BinaryHeap;
+use std::borrow::Cow;
+use std::collections::{BinaryHeap, HashMap};
 use std::cmp::Reverse;
+
+use crate::rank::fold;
 
 pub const NO_PARENT: u32 = u32::MAX;
 
@@ -34,6 +37,9 @@ pub struct FileIndex {
     slots: Vec<u32>,
     parents: Vec<u32>,
     flags: Vec<u8>,
+    /// The arena holds names spelled for search (see [`fold`]); slots whose
+    /// name changed by that keep the original here for display.
+    originals: HashMap<u32, Box<str>>,
 }
 
 const DIR: u8 = 1;
@@ -49,6 +55,7 @@ impl FileIndex {
             slots: Vec::with_capacity(entries),
             parents: Vec::with_capacity(entries),
             flags: Vec::with_capacity(entries),
+            originals: HashMap::new(),
         }
     }
 
@@ -56,7 +63,11 @@ impl FileIndex {
         let slot = self.slot_starts.len() as u32;
         self.slot_starts.push(self.arena.len() as u32);
         self.slot_ids.push(id);
-        self.arena.extend_from_slice(name.as_bytes());
+        let folded = fold(name);
+        if let Cow::Owned(_) = folded {
+            self.originals.insert(slot, name.into());
+        }
+        self.arena.extend_from_slice(folded.as_bytes());
         self.arena.push(0);
         slot
     }
@@ -75,6 +86,7 @@ impl FileIndex {
     pub fn rename(&mut self, id: u32, name: &str, parent: u32) {
         let old = self.slots[id as usize];
         self.slot_ids[old as usize] = DEAD;
+        self.originals.remove(&old);
         self.slots[id as usize] = self.push_slot(name, id);
         self.parents[id as usize] = parent;
         self.flags[id as usize] &= !DELETED;
@@ -84,7 +96,9 @@ impl FileIndex {
     pub fn remove(&mut self, id: u32) {
         if let Some(f) = self.flags.get_mut(id as usize) {
             *f |= DELETED;
-            self.slot_ids[self.slots[id as usize] as usize] = DEAD;
+            let slot = self.slots[id as usize];
+            self.slot_ids[slot as usize] = DEAD;
+            self.originals.remove(&slot);
         }
     }
 
@@ -104,6 +118,7 @@ impl FileIndex {
         self.arena.capacity()
             + (self.slot_starts.capacity() + self.slot_ids.capacity() + self.slots.capacity() + self.parents.capacity()) * 4
             + self.flags.capacity()
+            + self.originals.values().map(|n| n.len() + 24).sum::<usize>()
     }
 
     pub fn shrink_to_fit(&mut self) {
@@ -113,10 +128,15 @@ impl FileIndex {
         self.slots.shrink_to_fit();
         self.parents.shrink_to_fit();
         self.flags.shrink_to_fit();
+        self.originals.shrink_to_fit();
     }
 
     pub fn name(&self, id: u32) -> &str {
-        let s = self.slot_starts[self.slots[id as usize] as usize] as usize;
+        let slot = self.slots[id as usize];
+        if let Some(original) = self.originals.get(&slot) {
+            return original;
+        }
+        let s = self.slot_starts[slot as usize] as usize;
         let e = s + memchr::memchr(0, &self.arena[s..]).unwrap();
         // Only ever filled from &str.
         std::str::from_utf8(&self.arena[s..e]).unwrap()
@@ -138,12 +158,14 @@ impl FileIndex {
         parts.join("\\")
     }
 
-    /// Entries whose name contains `query` (ASCII case-insensitive), best
+    /// Entries whose name contains `query` (ASCII case-insensitive, Persian
+    /// and Arabic spelling variants folded together), best
     /// `limit` first: name prefix, then word start, then anywhere; shorter
     /// names first within each group. `only` restricts to folders or files.
     /// Large indexes are swept in parallel, one slice per core.
     pub fn search(&self, query: &str, only: Option<Kind>, limit: usize) -> Vec<FileHit> {
-        let q = query.trim().as_bytes();
+        let q = fold(query.trim());
+        let q = q.as_bytes();
         if q.is_empty() || limit == 0 || self.is_empty() {
             return Vec::new();
         }
@@ -214,7 +236,7 @@ impl FileIndex {
             let wrong_kind = want_dir.is_some_and(|d| (flags & DIR != 0) != d);
             let tier = if at == start {
                 3
-            } else if !arena[at - 1].is_ascii_alphanumeric() {
+            } else if !prev_char(&arena[start..at]).is_alphanumeric() {
                 2
             } else {
                 1
@@ -232,6 +254,15 @@ impl FileIndex {
         }
         heap.into_iter().map(|Reverse(x)| x).collect()
     }
+}
+
+/// Last character of `bytes`, a valid UTF-8 prefix of a name.
+fn prev_char(bytes: &[u8]) -> char {
+    let mut i = bytes.len().saturating_sub(1);
+    while i > 0 && bytes[i] & 0xC0 == 0x80 {
+        i -= 1;
+    }
+    std::str::from_utf8(&bytes[i..]).ok().and_then(|s| s.chars().next()).unwrap_or(' ')
 }
 
 #[cfg(test)]
@@ -280,6 +311,15 @@ mod tests {
     fn unicode_names() {
         let mut ix = FileIndex::default();
         ix.push("گزارش سالانه.pdf", NO_PARENT, false);
+        ix.push("كتاب‌هاي ملي", NO_PARENT, true);
+        ix.push("ماهانه", NO_PARENT, false);
         assert_eq!(ix.search("سالانه", None, 5).len(), 1);
+        // Persian keyboard query, Arabic letters and a ZWNJ in the name.
+        let hits = ix.search("کتابهای", None, 5);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(ix.name(hits[0].id), "كتاب‌هاي ملي");
+        // "انه" is inside words only, but word starts would hide it.
+        assert_eq!(ix.search("سال", None, 5).len(), 1);
+        assert_eq!(ix.search("انه", None, 5).len(), 2);
     }
 }
